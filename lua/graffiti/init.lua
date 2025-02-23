@@ -5,13 +5,19 @@ function M.setup(opts)
 		require("graffiti.server").start_server()
 	end, {})
 
-	vim.api.nvim_create_user_command("GraffitiInit", function()
-		require("graffiti.server").initialize()
+	vim.api.nvim_create_user_command("GraffitiShow", function()
+		local state = require("graffiti.server")
+		vim.notify("Server name: " .. state.server_name)
+		vim.notify("Server version: " .. state.server_version)
 	end, {})
 
 	-- vim.api.nvim_create_user_command("GraffitiStop", function()
 	-- 	require("graffiti.server").stop_server()
 	-- end, {})
+
+	vim.api.nvim_create_user_command("GraffitiStop", function()
+		require("graffiti.server").stop_server()
+	end, {})
 
 	vim.api.nvim_create_user_command("GraffitiKill", function()
 		require("graffiti.server").kill_server()
