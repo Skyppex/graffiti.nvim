@@ -21,7 +21,8 @@ function M.reset_state()
 	M.buffer = ""
 end
 
-function M.start_server()
+---@param mode "host" | "connect"
+function M.start_server(mode)
 	if M.server_job then
 		vim.notify("Server is already running!")
 		return
@@ -31,6 +32,7 @@ function M.start_server()
 		config.server_executable,
 		"--log-file",
 		config.log_file,
+		mode,
 	}, {
 		on_stdout = function(_, data)
 			M.parse_message(data)

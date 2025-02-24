@@ -4,7 +4,7 @@ function M.setup(opts)
 	require("graffiti.config").configure(opts)
 
 	vim.api.nvim_create_user_command("GraffitiHost", function()
-		require("graffiti.server").start_server()
+		require("graffiti.server").start_server("host")
 	end, {})
 
 	vim.api.nvim_create_user_command("GraffitiShow", function()
@@ -21,9 +21,9 @@ function M.setup(opts)
 		require("graffiti.server").kill_server()
 	end, {})
 
-	vim.api.nvim_create_user_command("GraffitiJoin", function(opts)
-		print("Join session: " .. opts.args)
-	end, { nargs = 1 })
+	vim.api.nvim_create_user_command("GraffitiJoin", function()
+		require("graffiti.server").start_server("connect")
+	end)
 end
 
 return M
