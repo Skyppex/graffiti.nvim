@@ -23,7 +23,7 @@ function M.setup(opts)
 
 	vim.api.nvim_create_user_command("GraffitiJoin", function()
 		require("graffiti.server").start_server("connect")
-	end)
+	end, {})
 end
 
 return M
