@@ -22,18 +22,34 @@ function M.reset_state()
 end
 
 ---@param mode "host" | "connect"
-function M.start_server(mode)
+---@param fingerprint string?
+function M.start_server(mode, fingerprint)
+	vim.notify("Starting server in " .. mode .. " mode")
 	if M.server_job then
 		vim.notify("Server is already running!")
 		return
 	end
 
-	M.server_job = vim.fn.jobstart({
+	vim.notify("12347890")
+
+	local cmd = {
 		config.server_executable,
 		"--log-file",
 		config.log_file,
 		mode,
-	}, {
+	}
+
+	vim.notify("1234789012374890")
+
+	if mode == "connect" then
+		vim.notify("Connecting to server with fingerprint")
+		vim.notify(vim.inspect(fingerprint))
+		table.insert(cmd, fingerprint)
+	end
+
+	vim.notify(vim.inspect(cmd))
+
+	M.server_job = vim.fn.jobstart(cmd, {
 		on_stdout = function(_, data)
 			M.parse_message(data)
 		end,
@@ -76,6 +92,16 @@ function M.kill_server()
 	else
 		vim.notify("No server running!")
 	end
+end
+
+function M.request_fingerprint()
+	local message = {
+		id = M.generate_id(),
+		jsonrpc = "2.0",
+		method = "request_fingerprint",
+	}
+
+	M.send_message(message)
 end
 
 -- Using vim's built-in random
@@ -214,10 +240,10 @@ function M.parse_headers(header_text)
 end
 
 function M.handle_response(id, result)
-	vim.notify("Handling response: " .. id)
+	vim.notify("Handling response: " .. vim.inspect(id))
 
 	if not M.requests[id] then
-		vim.notify("Received response for unknown request: " .. id, vim.log.levels.ERROR)
+		vim.notify("Received response for unknown request: " .. vim.inspect(id), vim.log.levels.ERROR)
 		return
 	end
 
@@ -238,11 +264,21 @@ function M.handle_response(id, result)
 		M.exit()
 		return
 	end
+
+	if request.method == "fingerprint" then
+		vim.notify("Fingerprint received")
+		M.display_fingerprint(result.fingerprint)
+		return
+	end
 end
 
 function M.handle_notification(method, params)
 	vim.notify("Handling response: " .. method)
 	vim.notify("Params: " .. vim.inspect(params))
+
+	if method == "fingerprint_generated" then
+		M.display_fingerprint(params.fingerprint)
+	end
 end
 
 function M.initialize()
@@ -298,6 +334,25 @@ function M.exit()
 	}
 
 	M.send_message(message)
+end
+
+function M.display_fingerprint(fingerprint)
+	-- Open a horizontal split and create a new buffer
+	vim.cmd("split")
+
+	-- Get the current buffer number
+	local buf = vim.api.nvim_create_buf(false, true)
+
+	-- Insert text into the buffer
+	local lines = {
+		fingerprint,
+	}
+
+	-- Set the lines in the buffer
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+
+	-- Set the current buffer to the newly created one
+	vim.api.nvim_set_current_buf(buf)
 end
 
 return M

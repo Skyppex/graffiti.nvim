@@ -21,8 +21,12 @@ function M.setup(opts)
 		require("graffiti.server").kill_server()
 	end, {})
 
-	vim.api.nvim_create_user_command("GraffitiJoin", function()
-		require("graffiti.server").start_server("connect")
+	vim.api.nvim_create_user_command("GraffitiJoin", function(opts)
+		require("graffiti.server").start_server("connect", opts.args)
+	end, { nargs = 1 })
+
+	vim.api.nvim_create_user_command("GraffitiRequestFingerprint", function()
+		require("graffiti.server").request_fingerprint()
 	end, {})
 end
 
