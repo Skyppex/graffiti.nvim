@@ -2,7 +2,8 @@ local M = {}
 
 M.default_config = {
 	server_executable = "graffiti-rs",
-	log_file = vim.fn.stdpath("data") .. "/graffiti.log",
+	server_log_file = vim.fn.stdpath("data") .. "/graffiti-server.log",
+	client_log_file = vim.fn.stdpath("data") .. "/graffiti-client.log",
 	host = "127.0.0.1",
 	port = 7777,
 }
