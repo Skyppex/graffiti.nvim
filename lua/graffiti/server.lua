@@ -176,16 +176,12 @@ function M.send_message(message, headers, log)
 end
 
 function M.parse_message(data)
-	vim.notify("Received data: " .. vim.inspect(data))
-
 	-- Add new data to buffer
 	for _, line in ipairs(data) do
 		if line ~= "" then
 			M.buffer = M.buffer .. line .. "\n"
 		end
 	end
-
-	vim.notify("Buffer: " .. M.buffer)
 
 	-- Try to parse a complete message
 	while true do
@@ -199,8 +195,6 @@ function M.parse_message(data)
 		-- Extract and parse headers
 		local header_text = string.sub(M.buffer, 1, headers_end - 1)
 		local headers = M.parse_headers(header_text)
-
-		vim.notify("Headers: " .. vim.inspect(headers))
 
 		-- Check for content-length
 		local content_length = tonumber(headers["content-length"])
@@ -227,17 +221,11 @@ function M.parse_message(data)
 
 		if ok then
 			-- You can use both headers and json here
-			vim.notify("Client received message: " .. vim.inspect({
-				headers = headers,
-				content = object,
-			}))
-
 			if object.id then
 				M.handle_response(object.id, object.result)
 			end
 
 			if object.method then
-				vim.notify("Handling notification")
 				M.handle_notification(object.method, object.params)
 			end
 		end
@@ -330,16 +318,12 @@ function M.exit()
 end
 
 function M.handle_response(id, result)
-	vim.notify("Handling response: " .. vim.inspect(id))
-
 	if not M.state.requests[id] then
 		vim.notify("Received response for unknown request: " .. vim.inspect(id), vim.log.levels.ERROR)
 		return
 	end
 
 	local request = M.state.requests[id]
-
-	vim.notify("Response for method: " .. request.method)
 
 	if request.method == "initialize" then
 		M.server_name = result.server_info.name
@@ -364,9 +348,6 @@ function M.handle_response(id, result)
 end
 
 function M.handle_notification(method, params)
-	vim.notify("Handling response: " .. method)
-	vim.notify("Params: " .. vim.inspect(params))
-
 	if method == "fingerprint_generated" then
 		M.display_fingerprint(params.fingerprint)
 		return
@@ -431,8 +412,6 @@ function M.handle_cursor_moved(client_id, location)
 		-- clamp the column to the line length and account for an empty line
 		col = math.min(col, line_length)
 
-		vim.notify("Column: " .. col)
-
 		-- Apply the highlight to the specified range
 		vim.api.nvim_buf_add_highlight(buf, ns_id, "VirtualCursor", line, col, col + 1)
 
@@ -443,7 +422,9 @@ function M.handle_cursor_moved(client_id, location)
 		-- })
 	end
 
+	vim.notify(vim.inspect(location))
 	local buf = find_buf_by_relative_path(location.uri)
+	vim.notify(tostring(buf))
 
 	-- Example usage: Update the virtual cursor
 	update_virtual_cursor_with_bg(buf, location.line, location.column)
@@ -472,7 +453,7 @@ end
 -- Function to find a buffer that matches a given relative path
 function find_buf_by_relative_path(relative_path)
 	-- Get the current working directory
-	local cwd = vim.fn.getcwd()
+	local cwd = os.getenv("PWD") or vim.fn.getcwd()
 
 	-- Iterate through all open buffers
 	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
@@ -482,17 +463,14 @@ function find_buf_by_relative_path(relative_path)
 
 		local full_path = vim.fn.fnamemodify(cwd .. "/" .. relative_path, ":p"):gsub("\\", "/")
 
-		vim.notify("Buf path" .. buf_path)
-		vim.notify("Full path" .. full_path)
+		vim.notify("buf_path: " .. buf_path)
+		vim.notify("full_path: " .. full_path)
 
 		-- Check if the buffer path matches the relative path
 		if buf_path == full_path then
-			vim.notify("FOUND MATCHING BUFFER")
 			return buf -- Return the buffer number if a match is found
 		end
 	end
-
-	vim.notify("NO MATCHING BUFFER")
 
 	return nil -- Return nil if no matching buffer is found
 end
