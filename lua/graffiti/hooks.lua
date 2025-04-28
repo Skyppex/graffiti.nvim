@@ -8,6 +8,16 @@ function M.create_hooks()
 		group = group,
 		callback = server.move_cursor,
 	})
+
+	vim.api.nvim_create_autocmd("BufWinEnter", {
+		group = group,
+		callback = server.move_cursor,
+	})
+
+	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "TextChangedP", "TextYankPost" }, {
+		group = group,
+		callback = server.edit_document,
+	})
 end
 
 function M.clear_hooks()

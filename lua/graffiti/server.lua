@@ -1,16 +1,95 @@
 local M = {}
 
+local function get_relative_path(buf)
+	local path = vim.api.nvim_buf_get_name(buf)
+	local relative_path = vim.fn.fnamemodify(path, ":." .. vim.fn.getcwd())
+	return relative_path:gsub("\\", "/")
+end
+
+-- Function to find a buffer that matches a given relative path
+local function find_buf_by_relative_path(relative_path)
+	-- Get the current working directory
+	local cwd = vim.fn.getcwd()
+	vim.notify("CWD: " .. cwd)
+
+	-- Iterate through all open buffers
+	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+		-- Get the full path of the buffer
+		local buf_path = vim.api.nvim_buf_get_name(buf)
+		buf_path = vim.fn.fnamemodify(buf_path, ":p"):gsub("\\", "/")
+
+		local full_path = vim.fn.fnamemodify(cwd .. "/" .. relative_path, ":p"):gsub("\\", "/")
+
+		-- Check if the buffer path matches the relative path
+		if buf_path == full_path then
+			return buf -- Return the buffer number if a match is found
+		end
+	end
+
+	return nil -- Return nil if no matching buffer is found
+end
+
+local function clear_namespace(ns_id)
+	local buffers = vim.api.nvim_list_bufs()
+
+	for _, buf in ipairs(buffers) do
+		-- Clear any existing extmarks in the namespace
+		vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
+	end
+end
+
+local function table_equals(t1, t2)
+	if #t1 ~= #t2 then
+		return false
+	end
+
+	for i = 1, #t1 do
+		if t1[i] ~= t2[i] then
+			return false
+		end
+	end
+	-- If all elements are equal, return true
+	return true
+end
+
+-- Function to write content to a file given a URI
+local function write_content_to_file(uri, content)
+	vim.notify("123 Writing content to file: " .. uri)
+	-- Check if the buffer is open
+	local bufnr = vim.fn.bufnr(uri, false)
+
+	if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
+		local new_lines = vim.split(content, "\n")
+
+		-- If the buffer is open, set the content and write
+		vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, new_lines)
+	else
+		vim.notify("126 Buffer is not open and loaded")
+		-- If the buffer is not open, write directly to the file
+		local file = io.open(uri, "w")
+		if file then
+			file:write(content)
+			file:close()
+		else
+			vim.notify("Failed to open file: " .. uri, vim.log.levels.ERROR)
+		end
+	end
+end
+
 M.server_job = nil
 M.server_name = ""
 M.server_version = ""
 M.buffer = ""
 
 M.default_state = {
+	client_id = "",
 	requests = {},
 	cursors = {},
 }
 
 M.state = {
+	client_id = "",
+
 	---@class RequestBase
 	---@field method string
 	---@field params table
@@ -29,6 +108,9 @@ M.state = {
 }
 
 local config = require("graffiti.config").config
+
+-- Create or get the namespace for the virtual cursor
+local virtual_cursor_ns = vim.api.nvim_create_namespace("graffiti.virtual_cursor")
 
 function M.reset_state()
 	M.server_name = ""
@@ -66,8 +148,6 @@ function M.start_server(mode, fingerprint)
 			mode,
 		}
 	end
-
-	vim.notify(vim.inspect(cmd))
 
 	M.server_job = vim.fn.jobstart(cmd, {
 		on_stdout = function(_, data)
@@ -222,7 +302,11 @@ function M.parse_message(data)
 		if ok then
 			-- You can use both headers and json here
 			if object.id then
-				M.handle_response(object.id, object.result)
+				if not M.state.requests[object.id] then
+					M.handle_request(object.id, object.method, object.params)
+				else
+					M.handle_response(object.id, object.result)
+				end
 			end
 
 			if object.method then
@@ -250,7 +334,6 @@ function M.parse_headers(header_text)
 end
 
 function M.initialize()
-	vim.notify("Initializing server")
 	local version = vim.version()
 
 	local message = {
@@ -259,7 +342,7 @@ function M.initialize()
 		method = "initialize",
 		params = {
 			process_id = vim.fn.getpid(),
-			client_info = {
+			editor_info = {
 				name = vim.v.progname,
 				version = version.major .. "." .. version.minor .. "." .. version.patch,
 			},
@@ -270,21 +353,15 @@ function M.initialize()
 	M.send_message(message, nil, true)
 end
 
-function M.move_cursor()
-	local buf = vim.api.nvim_get_current_buf()
-	local win = vim.api.nvim_get_current_win()
-
-	local cursor_pos = vim.api.nvim_win_get_cursor(win)
-
-	local line = cursor_pos[1] - 1 -- line is 1-indexed in nvim
-	local column = cursor_pos[2] -- column is 0-indexed in nvim
+function M.document_location(buf, line, column)
+	local uri = get_relative_path(buf)
 
 	local message = {
 		jsonrpc = "2.0",
-		method = "move_cursor",
+		method = "document/location",
 		params = {
 			location = {
-				uri = get_relative_path(buf),
+				uri = uri,
 				line = line,
 				column = column,
 			},
@@ -294,8 +371,75 @@ function M.move_cursor()
 	M.send_message(message, nil, false)
 end
 
+function M.cwd_changed(id)
+	local message = {
+		id = id,
+		jsonrpc = "2.0",
+		method = "cwd_changed",
+	}
+
+	M.send_message(message, nil, false)
+end
+
+function M.move_cursor()
+	local buf = vim.api.nvim_get_current_buf()
+	local win = vim.api.nvim_get_current_win()
+
+	local cursor_pos = vim.api.nvim_win_get_cursor(win)
+
+	local uri = get_relative_path(buf)
+	local line = cursor_pos[1] - 1 -- line is 1-indexed in nvim
+	local column = cursor_pos[2] -- column is 0-indexed in nvim
+
+	local location = {
+		uri = uri,
+		line = line,
+		column = column,
+	}
+
+	M.state.cursors[M.state.client_id] = location
+
+	local message = {
+		jsonrpc = "2.0",
+		method = "move_cursor",
+		params = {
+			location = location,
+		},
+	}
+
+	M.send_message(message, nil, false)
+end
+
+function M.edit_document()
+	vim.notify("Editing document")
+
+	local buf = vim.api.nvim_get_current_buf()
+	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	local content = table.concat(lines, "\n")
+
+	local message = {
+		jsonrpc = "2.0",
+		method = "document/edit",
+		params = {
+			mode = "full", -- "full" or "incremental"
+			uri = get_relative_path(buf),
+			content = content,
+		},
+	}
+
+	M.send_message(message, nil, false)
+end
+
+function M.document_edited_full(client_id, uri, content)
+	vim.notify("Document edited full by: " .. vim.inspect(client_id))
+	write_content_to_file(uri, content)
+end
+
 function M.shutdown()
 	vim.notify("Shutting down server")
+
+	-- Clear any existing extmarks in the namespace
+	clear_namespace(virtual_cursor_ns)
 
 	local message = {
 		id = M.generate_id(),
@@ -317,6 +461,40 @@ function M.exit()
 	M.send_message(message, nil, true)
 end
 
+function M.handle_request(id, method, params)
+	vim.notify("Request for method: " .. method)
+	if method == "document/location" then
+		vim.notify("Document location request")
+
+		local buf = vim.api.nvim_get_current_buf()
+		local win = vim.api.nvim_get_current_win()
+
+		local cursor_pos = vim.api.nvim_win_get_cursor(win)
+
+		local line = cursor_pos[1] - 1 -- line is 1-indexed in nvim
+		local column = cursor_pos[2] -- column is 0-indexed in nvim
+
+		M.document_location(buf, line, column)
+	end
+
+	if method == "initial_file_uri" then
+		vim.notify("Changing cwd: " .. params.cwd)
+		vim.fn.chdir(params.cwd)
+
+		vim.notify("Initial file is: " .. vim.inspect(params.initial_file_uri))
+		if params.initial_file_uri then
+			vim.notify("Opening initial file: " .. params.initial_file_uri)
+			local file = params.initial_file_uri
+			vim.cmd("edit! " .. file)
+			-- local buf = vim.api.nvim_create_buf(true, false)
+			-- vim.api.nvim_buf_set_name(buf, file)
+			-- vim.api.nvim_set_current_buf(buf)
+		end
+
+		M.cwd_changed(id)
+	end
+end
+
 function M.handle_response(id, result)
 	if not M.state.requests[id] then
 		vim.notify("Received response for unknown request: " .. vim.inspect(id), vim.log.levels.ERROR)
@@ -329,6 +507,7 @@ function M.handle_response(id, result)
 		M.server_name = result.server_info.name
 		M.server_version = result.server_info.version
 		vim.notify("Server initialized: " .. M.server_name .. " " .. M.server_version)
+		M.state.client_id = result.client_id
 		M.initialized()
 		return
 	end
@@ -355,6 +534,16 @@ function M.handle_notification(method, params)
 
 	if method == "cursor_moved" then
 		M.handle_cursor_moved(params.client_id, params.location)
+	end
+
+	if method == "document/edited" then
+		if params.mode == "full" then
+			M.document_edited_full(params.client_id, params.uri, params.content)
+		elseif params.mode == "incremental" then
+			vim.notify("Incremental edit not implemented yet", vim.log.Levels.WARN)
+		else
+			vim.notify("Unknown edit mode: " .. vim.inspect(params.mode), vim.log.Levels.ERROR)
+		end
 	end
 end
 
@@ -393,16 +582,10 @@ end
 function M.handle_cursor_moved(client_id, location)
 	M.state.cursors[client_id] = location
 
-	-- Define a custom highlight group for the virtual cursor
-	vim.cmd("highlight VirtualCursor guibg=#FFD700") -- Gold background color
-
 	-- Function to update the virtual cursor position with a background color
 	local function update_virtual_cursor_with_bg(buf, line, col)
-		-- Create or get the namespace for the virtual cursor
-		local ns_id = vim.api.nvim_create_namespace("virtual_cursor_bg")
-
 		-- Clear any existing extmarks in the namespace
-		vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
+		vim.api.nvim_buf_clear_namespace(buf, virtual_cursor_ns, 0, -1)
 
 		-- get the line at the specified line number
 		local current_line = vim.api.nvim_buf_get_lines(buf, line, line + 1, false)
@@ -413,7 +596,7 @@ function M.handle_cursor_moved(client_id, location)
 		col = math.min(col, line_length)
 
 		-- Apply the highlight to the specified range
-		vim.api.nvim_buf_add_highlight(buf, ns_id, "VirtualCursor", line, col, col + 1)
+		vim.api.nvim_buf_add_highlight(buf, virtual_cursor_ns, "VirtualCursor", line, col, col + 1)
 
 		-- Set a new extmark at the specified line and column with the highlight
 		-- vim.api.nvim_buf_set_extmark(buf, ns_id, line, col, {
@@ -422,57 +605,12 @@ function M.handle_cursor_moved(client_id, location)
 		-- })
 	end
 
-	vim.notify(vim.inspect(location))
+	vim.notify(location.uri)
 	local buf = find_buf_by_relative_path(location.uri)
-	vim.notify(tostring(buf))
 
-	-- Example usage: Update the virtual cursor
-	update_virtual_cursor_with_bg(buf, location.line, location.column)
-end
-
-function get_relative_path(buf)
-	local path = vim.api.nvim_buf_get_name(buf)
-	local relative_path = vim.fn.fnamemodify(path, ":." .. vim.fn.getcwd())
-	return relative_path:gsub("\\", "/")
-end
-
-function get_buf_bytes(buf)
-	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-
-	local byte_array = {}
-
-	for _, line in ipairs(lines) do
-		for i = 1, #line do
-			table.insert(byte_array, string.byte(line, i))
-		end
+	if buf then
+		update_virtual_cursor_with_bg(buf, location.line, location.column)
 	end
-
-	return byte_array
-end
-
--- Function to find a buffer that matches a given relative path
-function find_buf_by_relative_path(relative_path)
-	-- Get the current working directory
-	local cwd = os.getenv("PWD") or vim.fn.getcwd()
-
-	-- Iterate through all open buffers
-	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-		-- Get the full path of the buffer
-		local buf_path = vim.api.nvim_buf_get_name(buf)
-		buf_path = vim.fn.fnamemodify(buf_path, ":p"):gsub("\\", "/")
-
-		local full_path = vim.fn.fnamemodify(cwd .. "/" .. relative_path, ":p"):gsub("\\", "/")
-
-		vim.notify("buf_path: " .. buf_path)
-		vim.notify("full_path: " .. full_path)
-
-		-- Check if the buffer path matches the relative path
-		if buf_path == full_path then
-			return buf -- Return the buffer number if a match is found
-		end
-	end
-
-	return nil -- Return nil if no matching buffer is found
 end
 
 return M

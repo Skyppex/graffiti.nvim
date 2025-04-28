@@ -24,9 +24,10 @@ function M.setup(opts)
 	end, {})
 
 	vim.api.nvim_create_user_command("GraffitiShow", function()
-		local state = require("graffiti.server")
-		vim.notify("Server name: " .. state.server_name)
-		vim.notify("Server version: " .. state.server_version)
+		local server = require("graffiti.server")
+		vim.notify("Server name: " .. server.server_name)
+		vim.notify("Server version: " .. server.server_version)
+		vim.notify("State: " .. vim.inspect(server.state))
 	end, {})
 
 	vim.api.nvim_create_user_command("GraffitiRequestFingerprint", function()
