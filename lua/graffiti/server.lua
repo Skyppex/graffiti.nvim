@@ -1,4 +1,52 @@
+local Path = require("plenary.path")
+
 local M = {}
+
+M.server_job = nil
+M.server_name = ""
+M.server_version = ""
+M.buffer = ""
+
+M.default_state = {
+	client_id = "",
+	requests = {},
+	cursors = {},
+}
+
+M.state = {
+	client_id = "",
+
+	---@class RequestBase
+	---@field method string
+	---@field params table
+	---
+	---@type table<string, Request>
+	requests = {},
+
+	---@class DocumentLocation
+	---@field uri string
+	---@field line number
+	---@field column number
+	---
+	--- key is client_id
+	---@type table<string, DocumentLocation>
+	cursors = {},
+}
+
+local config = require("graffiti.config").config
+
+-- Create or get the namespace for the virtual cursor
+local virtual_cursor_ns = vim.api.nvim_create_namespace("graffiti.virtual_cursor")
+
+local function file_exists(uri)
+	local path = Path:new(uri)
+	return path:exists() and path:is_file()
+end
+
+local function dir_exists(uri)
+	local path = Path:new(uri)
+	return path:exists() and path:is_dir()
+end
 
 local function get_relative_path(buf)
 	local path = vim.api.nvim_buf_get_name(buf)
@@ -6,11 +54,21 @@ local function get_relative_path(buf)
 	return relative_path:gsub("\\", "/")
 end
 
+local function clear_marks()
+	vim.notify("clearing virtual cursors")
+
+	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+		vim.notify("clearing " .. vim.inspect(buf))
+		if vim.api.nvim_buf_is_loaded(buf) then
+			vim.api.nvim_buf_clear_namespace(buf, virtual_cursor_ns, 0, -1)
+		end
+	end
+end
+
 -- Function to find a buffer that matches a given relative path
 local function find_buf_by_relative_path(relative_path)
 	-- Get the current working directory
 	local cwd = vim.fn.getcwd()
-	vim.notify("CWD: " .. cwd)
 
 	-- Iterate through all open buffers
 	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
@@ -75,42 +133,6 @@ local function write_content_to_file(uri, content)
 		end
 	end
 end
-
-M.server_job = nil
-M.server_name = ""
-M.server_version = ""
-M.buffer = ""
-
-M.default_state = {
-	client_id = "",
-	requests = {},
-	cursors = {},
-}
-
-M.state = {
-	client_id = "",
-
-	---@class RequestBase
-	---@field method string
-	---@field params table
-	---
-	---@type table<string, Request>
-	requests = {},
-
-	---@class DocumentLocation
-	---@field uri string
-	---@field line number
-	---@field column number
-	---
-	--- key is client_id
-	---@type table<string, DocumentLocation>
-	cursors = {},
-}
-
-local config = require("graffiti.config").config
-
--- Create or get the namespace for the virtual cursor
-local virtual_cursor_ns = vim.api.nvim_create_namespace("graffiti.virtual_cursor")
 
 function M.reset_state()
 	M.server_name = ""
@@ -431,6 +453,10 @@ function M.edit_document()
 end
 
 function M.document_edited_full(client_id, uri, content)
+	if not file_exists(uri) then
+		return
+	end
+
 	vim.notify("Document edited full by: " .. vim.inspect(client_id))
 	write_content_to_file(uri, content)
 end
@@ -493,6 +519,13 @@ function M.handle_request(id, method, params)
 
 		M.cwd_changed(id)
 	end
+
+	if method == "shutdown" then
+		vim.notify("Server ready for shutdown")
+		M.exit()
+		clear_marks()
+		require("graffiti.hooks").clear_hooks()
+	end
 end
 
 function M.handle_response(id, result)
@@ -515,6 +548,7 @@ function M.handle_response(id, result)
 	if request.method == "shutdown" then
 		vim.notify("Server ready for shutdown")
 		M.exit()
+		clear_marks()
 		require("graffiti.hooks").clear_hooks()
 		return
 	end
@@ -580,7 +614,17 @@ end
 ---@param client_id string
 ---@param location DocumentLocation
 function M.handle_cursor_moved(client_id, location)
+	if not file_exists(location.uri) then
+		return
+	end
+
+	local old_location = M.state.cursors[client_id]
 	M.state.cursors[client_id] = location
+
+	if old_location and old_location.uri ~= location.uri then
+		local buf = find_buf_by_relative_path(old_location.uri)
+		vim.api.nvim_buf_clear_namespace(buf, virtual_cursor_ns, 0, -1)
+	end
 
 	-- Function to update the virtual cursor position with a background color
 	local function update_virtual_cursor_with_bg(buf, line, col)
