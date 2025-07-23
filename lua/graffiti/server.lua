@@ -643,6 +643,15 @@ function M.handle_cursor_moved(client_id, location)
 
 		local line_length = #current_line[1]
 
+		if line_length == 0 then
+			vim.api.nvim_buf_set_extmark(buf, virtual_cursor_ns, line, 0, {
+				virt_text = { { " ", "VirtualCursor" } },
+				virt_text_pos = "overlay",
+			})
+
+			return
+		end
+
 		-- clamp the column to the line length and account for an empty line
 		col = math.min(col, line_length)
 
