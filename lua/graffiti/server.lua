@@ -23,10 +23,13 @@ M.state = {
 	---@type table<string, Request>
 	requests = {},
 
-	---@class DocumentLocation
-	---@field uri string
+	---@class DocumentPosition
 	---@field line number
 	---@field column number
+	---
+	---@class DocumentLocation
+	---@field uri string
+	---@field pos DocumentPosition
 	---
 	--- key is client_id
 	---@type table<string, DocumentLocation>
@@ -384,8 +387,10 @@ function M.document_location(buf, line, column)
 		params = {
 			location = {
 				uri = uri,
-				line = line,
-				column = column,
+				pos = {
+					line = line,
+					column = column,
+				},
 			},
 		},
 	}
@@ -415,8 +420,10 @@ function M.move_cursor()
 
 	local location = {
 		uri = uri,
-		line = line,
-		column = column,
+		pos = {
+			line = line,
+			column = column,
+		},
 	}
 
 	M.state.cursors[M.state.client_id] = location
@@ -653,7 +660,7 @@ function M.handle_cursor_moved(client_id, location)
 	local buf = find_buf_by_relative_path(location.uri)
 
 	if buf then
-		update_virtual_cursor_with_bg(buf, location.line, location.column)
+		update_virtual_cursor_with_bg(buf, location.pos.line, location.pos.column)
 	end
 end
 
