@@ -8,10 +8,10 @@ function M.setup(opts)
 		require("graffiti.hooks").create_hooks()
 	end, {})
 
-	vim.api.nvim_create_user_command("GraffitiJoin", function(opts)
-		require("graffiti.server").start_server("connect", opts.args)
+	vim.api.nvim_create_user_command("GraffitiJoin", function(options)
+		require("graffiti.server").start_server("connect", options.args)
 		require("graffiti.hooks").create_hooks()
-	end, { nargs = 1 })
+	end, { nargs = "?" })
 
 	vim.api.nvim_create_user_command("GraffitiStop", function()
 		require("graffiti.server").stop_server()

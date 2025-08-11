@@ -46,11 +46,6 @@ local function file_exists(uri)
 	return path:exists() and path:is_file()
 end
 
-local function dir_exists(uri)
-	local path = Path:new(uri)
-	return path:exists() and path:is_dir()
-end
-
 local function get_relative_path(buf)
 	local path = vim.api.nvim_buf_get_name(buf)
 	local relative_path = vim.fn.fnamemodify(path, ":." .. vim.fn.getcwd())
@@ -99,20 +94,6 @@ local function clear_namespace(ns_id)
 	end
 end
 
-local function table_equals(t1, t2)
-	if #t1 ~= #t2 then
-		return false
-	end
-
-	for i = 1, #t1 do
-		if t1[i] ~= t2[i] then
-			return false
-		end
-	end
-	-- If all elements are equal, return true
-	return true
-end
-
 -- Function to write content to a file given a URI
 local function write_content_to_file(uri, content)
 	vim.notify("123 Writing content to file: " .. uri)
@@ -147,6 +128,20 @@ end
 ---@param mode "host" | "connect"
 ---@param fingerprint string?
 function M.start_server(mode, fingerprint)
+	vim.notify(vim.inspect(mode))
+	vim.notify(vim.inspect(fingerprint))
+	if mode == "connect" and (fingerprint == nil or fingerprint == "") then
+		vim.ui.input({
+			prompt = "enter fingerprint",
+		}, function(input)
+			fingerprint = input
+		end)
+
+		while fingerprint == nil do
+			vim.wait(50)
+		end
+	end
+
 	vim.notify("Starting server in " .. mode .. " mode")
 	if M.server_job then
 		vim.notify("Server is already running!")
@@ -630,7 +625,10 @@ function M.handle_cursor_moved(client_id, location)
 
 	if old_location and old_location.uri ~= location.uri then
 		local buf = find_buf_by_relative_path(old_location.uri)
-		vim.api.nvim_buf_clear_namespace(buf, virtual_cursor_ns, 0, -1)
+
+		if buf ~= nil then
+			vim.api.nvim_buf_clear_namespace(buf, virtual_cursor_ns, 0, -1)
+		end
 	end
 
 	-- Function to update the virtual cursor position with a background color
