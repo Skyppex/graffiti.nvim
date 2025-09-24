@@ -85,6 +85,53 @@ local function find_buf_by_relative_path(relative_path)
 	return nil -- Return nil if no matching buffer is found
 end
 
+-- Function to update the virtual cursor position with a background color
+local function update_virtual_cursor_with_bg(client_id)
+	local location = M.state.cursors[client_id]
+
+	if not location then
+		return
+	end
+
+	local buf = find_buf_by_relative_path(location.uri)
+
+	if not buf then
+		return
+	end
+
+	local line = location.pos.line
+	local col = location.pos.column
+
+	-- Clear any existing extmarks in the namespace
+	vim.api.nvim_buf_clear_namespace(buf, virtual_cursor_ns, 0, -1)
+
+	-- get the line at the specified line number
+	local current_line = vim.api.nvim_buf_get_lines(buf, line, line + 1, false)
+
+	local line_length = #current_line[1]
+
+	if line_length == 0 then
+		vim.api.nvim_buf_set_extmark(buf, virtual_cursor_ns, line, 0, {
+			virt_text = { { " ", "VirtualCursor" } },
+			virt_text_pos = "overlay",
+		})
+
+		return
+	end
+
+	-- clamp the column to the line length to always draw it where its valid
+	col = math.min(col, line_length - 1)
+
+	-- Apply the highlight to the specified range
+	vim.api.nvim_buf_add_highlight(buf, virtual_cursor_ns, "VirtualCursor", line, col, col + 1)
+
+	-- Set a new extmark at the specified line and column with the highlight
+	-- vim.api.nvim_buf_set_extmark(buf, ns_id, line, col, {
+	-- 	hl_group = "VirtualCursor", -- Use the custom highlight group
+	-- 	end_col = line_length > 0 and col + 1 or 0, -- Highlight a single character
+	-- })
+end
+
 local function clear_namespace(ns_id)
 	local buffers = vim.api.nvim_list_bufs()
 
@@ -96,7 +143,6 @@ end
 
 -- Function to write content to a file given a URI
 local function write_content_to_file(uri, content)
-	vim.notify("123 Writing content to file: " .. uri)
 	-- Check if the buffer is open
 	local bufnr = vim.fn.bufnr(uri, false)
 
@@ -106,7 +152,6 @@ local function write_content_to_file(uri, content)
 		-- If the buffer is open, set the content and write
 		vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, new_lines)
 	else
-		vim.notify("126 Buffer is not open and loaded")
 		-- If the buffer is not open, write directly to the file
 		local file = io.open(uri, "w")
 		if file then
@@ -128,8 +173,6 @@ end
 ---@param mode "host" | "connect"
 ---@param fingerprint string?
 function M.start_server(mode, fingerprint)
-	vim.notify(vim.inspect(mode))
-	vim.notify(vim.inspect(fingerprint))
 	if mode == "connect" and (fingerprint == nil or fingerprint == "") then
 		vim.ui.input({
 			prompt = "enter fingerprint",
@@ -461,6 +504,7 @@ function M.document_edited_full(client_id, uri, content)
 
 	vim.notify("Document edited full by: " .. vim.inspect(client_id))
 	write_content_to_file(uri, content)
+	update_virtual_cursor_with_bg(client_id)
 end
 
 function M.shutdown()
@@ -509,9 +553,7 @@ function M.handle_request(id, method, params)
 		vim.notify("Changing cwd: " .. params.cwd)
 		vim.fn.chdir(params.cwd)
 
-		vim.notify("Initial file is: " .. vim.inspect(params.initial_file_uri))
 		if params.initial_file_uri then
-			vim.notify("Opening initial file: " .. params.initial_file_uri)
 			local file = params.initial_file_uri
 			vim.cmd("edit! " .. file)
 			-- local buf = vim.api.nvim_create_buf(true, false)
@@ -631,44 +673,7 @@ function M.handle_cursor_moved(client_id, location)
 		end
 	end
 
-	-- Function to update the virtual cursor position with a background color
-	local function update_virtual_cursor_with_bg(buf, line, col)
-		-- Clear any existing extmarks in the namespace
-		vim.api.nvim_buf_clear_namespace(buf, virtual_cursor_ns, 0, -1)
-
-		-- get the line at the specified line number
-		local current_line = vim.api.nvim_buf_get_lines(buf, line, line + 1, false)
-
-		local line_length = #current_line[1]
-
-		if line_length == 0 then
-			vim.api.nvim_buf_set_extmark(buf, virtual_cursor_ns, line, 0, {
-				virt_text = { { " ", "VirtualCursor" } },
-				virt_text_pos = "overlay",
-			})
-
-			return
-		end
-
-		-- clamp the column to the line length and account for an empty line
-		col = math.min(col, line_length)
-
-		-- Apply the highlight to the specified range
-		vim.api.nvim_buf_add_highlight(buf, virtual_cursor_ns, "VirtualCursor", line, col, col + 1)
-
-		-- Set a new extmark at the specified line and column with the highlight
-		-- vim.api.nvim_buf_set_extmark(buf, ns_id, line, col, {
-		-- 	hl_group = "VirtualCursor", -- Use the custom highlight group
-		-- 	end_col = line_length > 0 and col + 1 or 0, -- Highlight a single character
-		-- })
-	end
-
-	vim.notify(location.uri)
-	local buf = find_buf_by_relative_path(location.uri)
-
-	if buf then
-		update_virtual_cursor_with_bg(buf, location.pos.line, location.pos.column)
-	end
+	update_virtual_cursor_with_bg(client_id)
 end
 
 return M

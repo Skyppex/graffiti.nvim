@@ -4,7 +4,7 @@ local M = {}
 local group = vim.api.nvim_create_augroup("Graffiti", { clear = true })
 
 function M.create_hooks()
-	vim.api.nvim_create_autocmd("CursorMoved", {
+	vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
 		group = group,
 		callback = server.move_cursor,
 	})
