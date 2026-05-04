@@ -18,6 +18,11 @@ function M.create_hooks()
 		group = group,
 		callback = server.edit_document,
 	})
+
+	vim.api.nvim_create_autocmd({ "BufReadPost", "BufEnter" }, {
+		group = group,
+		callback = server.update_virtual_cursors,
+	})
 end
 
 function M.clear_hooks()

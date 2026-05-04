@@ -87,6 +87,10 @@ end
 
 -- Function to update the virtual cursor position with a background color
 local function update_virtual_cursor_with_bg(client_id)
+	if client_id == M.state.client_id then
+		return
+	end
+
 	local location = M.state.cursors[client_id]
 
 	if not location then
@@ -610,6 +614,11 @@ function M.handle_notification(method, params)
 		return
 	end
 
+	if method == "client_id_changed" then
+		M.change_client_id(params.client_id)
+		return
+	end
+
 	if method == "cursor_moved" then
 		M.handle_cursor_moved(params.client_id, params.location)
 	end
@@ -655,6 +664,17 @@ function M.display_fingerprint(fingerprint)
 	vim.api.nvim_set_current_buf(buf)
 end
 
+function M.change_client_id(client_id)
+	local old_client_id = M.state.client_id
+	M.state.client_id = client_id
+
+	local cursor = M.state.cursors[old_client_id]
+
+	M.state.cursors[client_id] = cursor
+	M.state.cursors[old_client_id] = nil
+	vim.notify("client id was changed from " .. old_client_id .. " to " .. client_id)
+end
+
 ---@param client_id string
 ---@param location DocumentLocation
 function M.handle_cursor_moved(client_id, location)
@@ -674,6 +694,13 @@ function M.handle_cursor_moved(client_id, location)
 	end
 
 	update_virtual_cursor_with_bg(client_id)
+end
+
+--- attempt to draw all cursors
+function M.update_virtual_cursors()
+	for client_id, _ in pairs(M.state.cursors) do
+		update_virtual_cursor_with_bg(client_id)
+	end
 end
 
 return M
