@@ -263,6 +263,10 @@ end
 function M.kill_server()
 	if M.server_job then
 		vim.fn.jobstop(M.server_job)
+
+		-- Clear any existing extmarks in the namespace
+		clear_namespace(virtual_cursor_ns)
+
 		M.server_job = nil
 	else
 		vim.notify("No server running!")
