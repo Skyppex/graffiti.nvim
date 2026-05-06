@@ -203,7 +203,9 @@ function M.start_server(mode, fingerprint)
 			-- "-l",
 			"--log-file",
 			config.client_log_file,
-			mode,
+			"connect",
+			"--client-key",
+			"~/.ssh/id_25519-sky",
 			fingerprint,
 		}
 	else
@@ -212,7 +214,9 @@ function M.start_server(mode, fingerprint)
 			-- "-l",
 			"--log-file",
 			config.server_log_file,
-			mode,
+			"host",
+			"--authorized-keys",
+			"~/.ssh/authorized_keys",
 		}
 	end
 
