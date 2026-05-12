@@ -36,7 +36,7 @@ M.state = {
 	cursors = {},
 }
 
-local config = require("graffiti.config").config
+local resolve = require("graffiti.config").resolve
 
 -- Create or get the namespace for the virtual cursor
 local virtual_cursor_ns = vim.api.nvim_create_namespace("graffiti.virtual_cursor")
@@ -199,24 +199,24 @@ function M.start_server(mode, fingerprint)
 
 	if mode == "connect" then
 		cmd = {
-			config.server_executable,
+			resolve({ "server_executable" }),
 			-- "-l",
 			"--log-file",
-			config.client_log_file,
+			resolve({ "client_log_file" }),
 			"connect",
 			"--client-key",
-			"~/.ssh/id_25519-sky",
+			resolve({ "client_key" }),
 			fingerprint,
 		}
 	else
 		cmd = {
-			config.server_executable,
+			resolve({ "server_executable" }),
 			-- "-l",
 			"--log-file",
-			config.server_log_file,
+			resolve({ "server_log_file" }),
 			"host",
 			"--authorized-keys",
-			"~/.ssh/authorized_keys",
+			resolve({ "authorized_keys" }),
 		}
 	end
 
