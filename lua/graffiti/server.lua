@@ -16,7 +16,7 @@ M.default_state = {
 M.state = {
 	client_id = "",
 
-	---@class RequestBase
+	---@class Request
 	---@field method string
 	---@field params table
 	---

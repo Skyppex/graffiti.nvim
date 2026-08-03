@@ -1,5 +1,6 @@
 local M = {}
 
+--- @param opts GraffitiOpts
 function M.setup(opts)
 	require("graffiti.config").configure(opts)
 
