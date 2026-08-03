@@ -16,8 +16,8 @@ M.default_config = {
 	server_executable = "graffiti-rs",
 	server_log_file = vim.fn.stdpath("data") .. "/graffiti-server.log",
 	client_log_file = vim.fn.stdpath("data") .. "/graffiti-client.log",
-	authorized_keys = os.getenv("HOME") .. "/.graffiti/authorized_keys",
-	client_key = os.getenv("HOME") .. "/.graffiti/id_25519",
+	authorized_keys = "~/.graffiti/authorized_keys",
+	client_key = "~/.graffiti/id_25519",
 	cursors = {
 		hi1 = "guibg=#FFD700 guifg=#FFFFFF",
 	},
