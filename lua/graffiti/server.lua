@@ -204,7 +204,7 @@ function M.start_server(mode, fingerprint)
 	if mode == "connect" then
 		cmd = {
 			resolve({ "server_executable" }),
-			-- "-l",
+			-- "--log-to-stderr",
 			"--log-file",
 			resolve({ "client_log_file" }),
 			"connect",
@@ -215,7 +215,7 @@ function M.start_server(mode, fingerprint)
 	else
 		cmd = {
 			resolve({ "server_executable" }),
-			-- "-l",
+			-- "--log-to-stderr",
 			"--log-file",
 			resolve({ "server_log_file" }),
 			"host",
