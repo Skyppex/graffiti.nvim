@@ -19,7 +19,7 @@ M.default_config = {
 	authorized_keys = os.getenv("HOME") .. "/.graffiti/authorized_keys",
 	client_key = os.getenv("HOME") .. "/.graffiti/id_25519",
 	cursors = {
-		hi1 = "#FFD700",
+		hi1 = "guibg=#FFD700 guifg=#FFFFFF",
 	},
 }
 
@@ -27,7 +27,7 @@ M.config = {}
 
 local function create_highlight_groups()
 	-- Define a custom highlight group for the virtual cursor
-	vim.cmd("highlight VirtualCursor guibg=" .. M.resolve({ "cursors", "hi1" }))
+	vim.cmd("highlight VirtualCursor " .. M.resolve({ "cursors", "hi1" }))
 end
 
 function M.configure(opts)
