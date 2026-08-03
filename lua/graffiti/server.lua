@@ -127,7 +127,11 @@ local function update_virtual_cursor_with_bg(client_id)
 	col = math.min(col, line_length - 1)
 
 	-- Apply the highlight to the specified range
-	vim.api.nvim_buf_add_highlight(buf, virtual_cursor_ns, "VirtualCursor", line, col, col + 1)
+	-- vim.api.nvim_buf_add_highlight(buf, virtual_cursor_ns, "VirtualCursor", line, col, col + 1) -- deprecated version
+	vim.api.nvim_buf_set_extmark(buf, virtual_cursor_ns, line, col, {
+		end_col = col + 1,
+		hl_group = "VirtualCursor",
+	})
 
 	-- Set a new extmark at the specified line and column with the highlight
 	-- vim.api.nvim_buf_set_extmark(buf, ns_id, line, col, {
