@@ -458,15 +458,39 @@ function M.cwd_changed(id)
 	M.send_message(message, nil, false)
 end
 
+local function portable_pos(win, buf)
+	local p = vim.fn.getcurpos(win)
+	local lnum, col, coladd = p[2], p[3], p[4]
+	local text = vim.api.nvim_buf_get_lines(buf, lnum - 1, lnum, true)[1]
+	local target = vim.fn.virtcol({ lnum, col, coladd }) - 1
+	local ts = vim.bo[buf].tabstop
+
+	local vcol = 0
+	local nchars = vim.fn.strchars(text)
+	for i = 0, nchars - 1 do
+		local ch = vim.fn.strcharpart(text, i, 1)
+		local w
+		if ch == "\t" then
+			w = ts - (vcol % ts)
+		else
+			w = vim.fn.strdisplaywidth(ch)
+		end
+		if target < vcol + w then
+			return lnum - 1, i -- inside this character
+		end
+		vcol = vcol + w
+	end
+
+	return lnum - 1, nchars + (target - vcol) -- past end of line
+end
+
 function M.move_cursor()
 	local buf = vim.api.nvim_get_current_buf()
 	local win = vim.api.nvim_get_current_win()
 
-	local cursor_pos = vim.api.nvim_win_get_cursor(win)
-
 	local uri = get_relative_path(buf)
-	local line = cursor_pos[1] - 1 -- line is 1-indexed in nvim
-	local column = cursor_pos[2] -- column is 0-indexed in nvim
+	-- returns both positions 0-indexed so no transformations needed here
+	local line, column = portable_pos(win, buf)
 
 	local location = {
 		uri = uri,
