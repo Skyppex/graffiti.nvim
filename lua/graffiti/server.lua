@@ -589,19 +589,15 @@ function M.handle_request(id, method, params)
 		M.document_location(buf, line, column)
 	end
 
-	if method == "initial_file_uri" then
+	if method == "change_cwd" then
 		vim.notify("Changing cwd: " .. params.cwd)
-		vim.fn.chdir(params.cwd)
-
-		if params.initial_file_uri then
-			local file = params.initial_file_uri
-			vim.cmd("edit! " .. file)
-			-- local buf = vim.api.nvim_create_buf(true, false)
-			-- vim.api.nvim_buf_set_name(buf, file)
-			-- vim.api.nvim_set_current_buf(buf)
-		end
-
+		vim.fn.chdir(params.cwd, "global")
 		M.cwd_changed(id)
+	end
+
+	if method == "initial_file_uri" then
+		local file = params.initial_file_uri
+		vim.cmd("edit! " .. file)
 	end
 
 	if method == "shutdown" then
