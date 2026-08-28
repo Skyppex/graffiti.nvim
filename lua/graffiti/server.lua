@@ -154,21 +154,16 @@ local function write_content_to_file(uri, content)
 	-- Check if the buffer is open
 	local bufnr = vim.fn.bufnr(uri, false)
 
-	if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
-		local new_lines = vim.split(content, "\n")
-
-		-- If the buffer is open, set the content and write
-		vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, new_lines)
-	else
-		-- If the buffer is not open, write directly to the file
-		local file = io.open(uri, "w")
-		if file then
-			file:write(content)
-			file:close()
-		else
-			vim.notify("Failed to open file: " .. uri, vim.log.levels.ERROR)
-		end
+	if bufnr == -1 or not vim.api.nvim_buf_is_loaded(bufnr) then
+		-- if the buffer isn't open, open is in the background first
+		bufnr = vim.fn.bufadd(uri)
+		vim.fn.bufload(bufnr)
 	end
+
+	local new_lines = vim.split(content, "\n")
+
+	-- If the buffer is open, set the content and write
+	vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, new_lines)
 end
 
 function M.reset_state()
@@ -179,16 +174,16 @@ function M.reset_state()
 end
 
 ---@param mode "host" | "connect"
----@param fingerprint string?
-function M.start_server(mode, fingerprint)
-	if mode == "connect" and (fingerprint == nil or fingerprint == "") then
+---@param token string?
+function M.start_server(mode, token)
+	if mode == "connect" and (token == nil or token == "") then
 		vim.ui.input({
-			prompt = "enter fingerprint",
+			prompt = "enter token",
 		}, function(input)
-			fingerprint = input
+			token = input
 		end)
 
-		while fingerprint == nil do
+		while token == nil do
 			vim.wait(50)
 		end
 	end
@@ -210,7 +205,7 @@ function M.start_server(mode, fingerprint)
 			"connect",
 			"--client-key",
 			resolve({ "client_key" }),
-			fingerprint,
+			token,
 		}
 	else
 		cmd = {
@@ -273,11 +268,11 @@ function M.kill_server()
 	end
 end
 
-function M.request_fingerprint()
+function M.request_session_token()
 	local message = {
 		id = M.generate_id(),
 		jsonrpc = "2.0",
-		method = "request_fingerprint",
+		method = "request_session_token",
 	}
 
 	M.send_message(message, nil, true)
@@ -622,6 +617,11 @@ function M.handle_response(id, result)
 		vim.notify("Server initialized: " .. M.server_name .. " " .. M.server_version)
 		M.state.client_id = result.client_id
 		M.initialized()
+
+		if result.token ~= nil and result.token ~= vim.NIL then
+			M.display_session_token(result.token)
+		end
+
 		return
 	end
 
@@ -633,19 +633,14 @@ function M.handle_response(id, result)
 		return
 	end
 
-	if request.method == "fingerprint" then
-		vim.notify("Fingerprint received")
-		M.display_fingerprint(result.fingerprint)
+	if request.method == "session_token" then
+		vim.notify("Session token received")
+		M.display_session_token(result.token)
 		return
 	end
 end
 
 function M.handle_notification(method, params)
-	if method == "fingerprint_generated" then
-		M.display_fingerprint(params.fingerprint)
-		return
-	end
-
 	if method == "client_id_changed" then
 		M.change_client_id(params.client_id)
 		return
@@ -677,7 +672,7 @@ function M.initialized()
 	M.send_message(message, nil, true)
 end
 
-function M.display_fingerprint(fingerprint)
+function M.display_session_token(token)
 	-- Open a horizontal split and create a new buffer
 	vim.cmd("split")
 
@@ -686,7 +681,7 @@ function M.display_fingerprint(fingerprint)
 
 	-- Insert text into the buffer
 	local lines = {
-		fingerprint,
+		token,
 	}
 
 	-- Set the lines in the buffer

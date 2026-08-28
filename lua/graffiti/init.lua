@@ -32,7 +32,7 @@ function M.setup(opts)
 	end, {})
 
 	vim.api.nvim_create_user_command("GraffitiRequestFingerprint", function()
-		require("graffiti.server").request_fingerprint()
+		require("graffiti.server").request_session_token()
 	end, {})
 end
 
