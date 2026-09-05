@@ -10,6 +10,7 @@ local M = {}
 ---
 --- @class GraffitiCursorOpts
 --- @field hi1 string | fun(): string
+--- @field hi2 string | fun(): string
 
 --- @type GraffitiOpts
 M.default_config = {
@@ -20,6 +21,7 @@ M.default_config = {
 	client_key = "~/.graffiti/id_25519",
 	cursors = {
 		hi1 = "guibg=#FFD700 guifg=#FFFFFF",
+		hi2 = "guibg=#3355CC guifg=#FFFFFF",
 	},
 }
 
@@ -27,7 +29,8 @@ M.config = {}
 
 local function create_highlight_groups()
 	-- Define a custom highlight group for the virtual cursor
-	vim.cmd("highlight VirtualCursor " .. M.resolve({ "cursors", "hi1" }))
+	vim.cmd("highlight VirtualCursor1 " .. M.resolve({ "cursors", "hi1" }))
+	vim.cmd("highlight VirtualCursor2 " .. M.resolve({ "cursors", "hi2" }))
 end
 
 function M.configure(opts)

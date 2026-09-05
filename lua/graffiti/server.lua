@@ -8,12 +8,16 @@ M.server_version = ""
 M.buffer = ""
 
 M.default_state = {
+	is_host = false,
 	client_id = "",
 	requests = {},
+	clients = {},
+	client_increment = 1,
 	cursors = {},
 }
 
 M.state = {
+	is_host = false,
 	client_id = "",
 
 	---@class Request
@@ -23,6 +27,12 @@ M.state = {
 	---@type table<string, Request>
 	requests = {},
 
+	---@type table<string, number> client_id -> order (1 indexed)
+	clients = {},
+
+	---@type number order for next client to connect. should be incremented after connection
+	client_increment = 1,
+
 	---@class DocumentPosition
 	---@field line number
 	---@field column number
@@ -31,15 +41,16 @@ M.state = {
 	---@field uri string
 	---@field pos DocumentPosition
 	---
+	---@class Cursor
+	---@field ns_id number|nil is nil or own cursor
+	---@field location DocumentLocation
+	---
 	--- key is client_id
-	---@type table<string, DocumentLocation>
+	---@type table<string, Cursor>
 	cursors = {},
 }
 
 local resolve = require("graffiti.config").resolve
-
--- Create or get the namespace for the virtual cursor
-local virtual_cursor_ns = vim.api.nvim_create_namespace("graffiti.virtual_cursor")
 
 local function file_exists(uri)
 	local path = Path:new(uri)
@@ -52,15 +63,29 @@ local function get_relative_path(buf)
 	return relative_path:gsub("\\", "/")
 end
 
+local function clear_namespace(ns_id)
+	if not ns_id then
+		return
+	end
+
+	local buffers = vim.api.nvim_list_bufs()
+
+	for _, buf in ipairs(buffers) do
+		-- Clear any existing extmarks in the namespace
+		vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
+	end
+end
+
+local function clear_cursors()
+	for _, cursor in ipairs(M.state.cursors) do
+		clear_namespace(cursor.ns_id)
+	end
+end
+
 local function clear_marks()
 	vim.notify("clearing virtual cursors")
 
-	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-		vim.notify("clearing " .. vim.inspect(buf))
-		if vim.api.nvim_buf_is_loaded(buf) then
-			vim.api.nvim_buf_clear_namespace(buf, virtual_cursor_ns, 0, -1)
-		end
-	end
+	clear_cursors()
 end
 
 -- Function to find a buffer that matches a given relative path
@@ -91,11 +116,15 @@ local function update_virtual_cursor_with_bg(client_id)
 		return
 	end
 
-	local location = M.state.cursors[client_id]
+	local cursor = M.state.cursors[client_id]
 
-	if not location then
+	if not cursor or cursor == nil then
 		return
 	end
+
+	vim.notify(vim.inspect(cursor))
+	local ns_id = cursor.ns_id
+	local location = cursor.location
 
 	local buf = find_buf_by_relative_path(location.uri)
 
@@ -106,17 +135,22 @@ local function update_virtual_cursor_with_bg(client_id)
 	local line = location.pos.line
 	local col = location.pos.column
 
-	-- Clear any existing extmarks in the namespace
-	vim.api.nvim_buf_clear_namespace(buf, virtual_cursor_ns, 0, -1)
+	-- clear any existing extmarks in the namespace
+	vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
 
 	-- get the line at the specified line number
 	local current_line = vim.api.nvim_buf_get_lines(buf, line, line + 1, false)
 
 	local line_length = #current_line[1]
 
+	-- used to find out which color to use
+	local order = M.state.clients[client_id]
+
+	local hl_group = "VirtualCursor" .. tostring(order)
+
 	if line_length == 0 then
-		vim.api.nvim_buf_set_extmark(buf, virtual_cursor_ns, line, 0, {
-			virt_text = { { " ", "VirtualCursor" } },
+		vim.api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
+			virt_text = { { " ", hl_group } },
 			virt_text_pos = "overlay",
 		})
 
@@ -126,27 +160,11 @@ local function update_virtual_cursor_with_bg(client_id)
 	-- clamp the column to the line length to always draw it where its valid
 	col = math.min(col, line_length - 1)
 
-	-- Apply the highlight to the specified range
-	-- vim.api.nvim_buf_add_highlight(buf, virtual_cursor_ns, "VirtualCursor", line, col, col + 1) -- deprecated version
-	vim.api.nvim_buf_set_extmark(buf, virtual_cursor_ns, line, col, {
+	-- apply the highlight to the specified range
+	vim.api.nvim_buf_set_extmark(buf, ns_id, line, col, {
 		end_col = col + 1,
-		hl_group = "VirtualCursor",
+		hl_group = hl_group,
 	})
-
-	-- Set a new extmark at the specified line and column with the highlight
-	-- vim.api.nvim_buf_set_extmark(buf, ns_id, line, col, {
-	-- 	hl_group = "VirtualCursor", -- Use the custom highlight group
-	-- 	end_col = line_length > 0 and col + 1 or 0, -- Highlight a single character
-	-- })
-end
-
-local function clear_namespace(ns_id)
-	local buffers = vim.api.nvim_list_bufs()
-
-	for _, buf in ipairs(buffers) do
-		-- Clear any existing extmarks in the namespace
-		vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
-	end
 end
 
 -- Function to write content to a file given a URI
@@ -217,6 +235,7 @@ function M.start_server(mode, token)
 			"--authorized-keys",
 			resolve({ "authorized_keys" }),
 		}
+		M.state.is_host = true
 	end
 
 	M.server_job = vim.fn.jobstart(cmd, {
@@ -259,8 +278,8 @@ function M.kill_server()
 	if M.server_job then
 		vim.fn.jobstop(M.server_job)
 
-		-- Clear any existing extmarks in the namespace
-		clear_namespace(virtual_cursor_ns)
+		-- clear any existing extmarks in the namespace
+		clear_cursors()
 
 		M.server_job = nil
 	else
@@ -499,7 +518,17 @@ function M.move_cursor()
 		},
 	}
 
-	M.state.cursors[M.state.client_id] = location
+	local cursor = M.state.cursors[M.state.client_id]
+
+	if not cursor or cursor == nil then
+		cursor = {
+			location = location,
+		}
+
+		M.state.cursors[M.state.client_id] = cursor
+	else
+		M.state.cursors[M.state.client_id].location = location
+	end
 
 	local message = {
 		jsonrpc = "2.0",
@@ -545,8 +574,8 @@ end
 function M.shutdown()
 	vim.notify("Shutting down server")
 
-	-- Clear any existing extmarks in the namespace
-	clear_namespace(virtual_cursor_ns)
+	-- clear any existing extmarks in the namespace
+	clear_cursors()
 
 	local message = {
 		id = M.generate_id(),
@@ -659,6 +688,28 @@ function M.handle_notification(method, params)
 			vim.notify("Unknown edit mode: " .. vim.inspect(params.mode), vim.log.Levels.ERROR)
 		end
 	end
+
+	if method == "peer_connected" then
+		vim.notify("peer connected")
+		local order = M.state.client_increment
+		M.state.clients[params.client_id] = order
+		M.state.client_increment = order + 1
+	end
+
+	if method == "peer_exists" then
+		vim.notify("adding existing peer")
+		local order = M.state.client_increment
+		M.state.clients[params.client_id] = order
+		M.state.client_increment = order + 1
+		M.handle_cursor_moved(params.client_id, params.location)
+	end
+
+	if method == "peer_disconnected" then
+		vim.notify("peer disconnected")
+		M.state.clients[params.client_id] = nil
+		M.state.cursors[params.client_id] = nil
+		update_virtual_cursor_with_bg(params.client_id)
+	end
 end
 
 function M.initialized()
@@ -673,6 +724,17 @@ function M.initialized()
 end
 
 function M.display_session_token(token)
+	local bufs = vim.api.nvim_list_bufs()
+
+	for _, buf in ipairs(bufs) do
+		local name = vim.api.nvim_buf_get_name(buf)
+
+		if name == "graffiti://token" then
+			vim.notify("detected multiple display_session_token calls", vim.log.levels.WARN)
+			return
+		end
+	end
+
 	-- Open a horizontal split and create a new buffer
 	vim.cmd("split")
 
@@ -686,6 +748,7 @@ function M.display_session_token(token)
 
 	-- Set the lines in the buffer
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	vim.api.nvim_buf_set_name(buf, "graffiti://token")
 
 	-- Set the current buffer to the newly created one
 	vim.api.nvim_set_current_buf(buf)
@@ -709,14 +772,32 @@ function M.handle_cursor_moved(client_id, location)
 		return
 	end
 
-	local old_location = M.state.cursors[client_id]
-	M.state.cursors[client_id] = location
+	local cursor = M.state.cursors[client_id]
+	local old_location = nil
+
+	vim.notify("CURSOR: " .. vim.inspect(cursor))
+	vim.notify("CLIENT: " .. vim.inspect(client_id))
+
+	if not cursor or cursor == nil then
+		local ns_id = vim.api.nvim_create_namespace("graffiti.virtual_cursor" .. M.state.clients[client_id])
+
+		cursor = {
+			ns_id = ns_id,
+			location = location,
+		}
+
+		M.state.cursors[client_id] = cursor
+	else
+		old_location = cursor.location
+		M.state.cursors[client_id].location = location
+		cursor = M.state.cursors[client_id]
+	end
 
 	if old_location and old_location.uri ~= location.uri then
 		local buf = find_buf_by_relative_path(old_location.uri)
 
 		if buf ~= nil then
-			vim.api.nvim_buf_clear_namespace(buf, virtual_cursor_ns, 0, -1)
+			vim.api.nvim_buf_clear_namespace(buf, cursor.ns_id, 0, -1)
 		end
 	end
 
